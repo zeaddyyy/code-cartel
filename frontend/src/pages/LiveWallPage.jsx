@@ -1,0 +1,3 @@
+export default function LiveWallPage({ visibleCameras, Preview, PageHeading }) {
+  return <div className="page-view"><PageHeading title="Live camera wall" subtitle="Operator-selected previews; RTSP remains server-side" count={`${visibleCameras.length} visible`} /><section className="wall-page-grid">{visibleCameras.map((camera) => <article className="wall-tile large" key={camera.id}><Preview camera={camera} /><div><b>{camera.camera_id}</b><small>{camera.name || "Unnamed camera"}</small><small>{camera.location_name || "Location unavailable"}</small></div></article>)}{!visibleCameras.length && <div className="panel empty-state">No cameras available for the live wall.</div>}</section></div>;
+}

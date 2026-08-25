@@ -1,0 +1,19 @@
+# Local secrets and runtime configuration
+**/.env
+!.env.example
+
+# Dependencies and generated output
+**/node_modules/
+ai-service/venv/
+**/__pycache__/
+**/*.pyc
+frontend/dist/
+
+# Evidence, logs, backups, and local runtime state
+.backups/
+*.log
+*.pid
+/tmp/
+netrax_snapshots/
+.DS_Store
+*.tar.gz
