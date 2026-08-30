@@ -349,6 +349,24 @@ const updateCamera = async (req, res) => {
   } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 };
 
+// Bulk onboarding accepts validated JSON rows from a CSV/import adapter. The
+// transaction ensures a partial upload never leaves the registry inconsistent.
+const bulkCreateCameras = async (req, res) => {
+  const cameras = Array.isArray(req.body.cameras) ? req.body.cameras : [];
+  if (!cameras.length || cameras.length > 1000) return res.status(400).json({ success: false, error: { code: "INVALID_BATCH", message: "cameras must contain 1 to 1000 rows" } });
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    for (const camera of cameras) {
+      if (!camera.camera_id || !Number.isFinite(Number(camera.latitude)) || !Number.isFinite(Number(camera.longitude))) throw new Error("Each camera requires camera_id, latitude, and longitude");
+      await client.query(`INSERT INTO cameras (camera_id,name,location_name,latitude,longitude,location,status,connectivity,camera_type,ownership) VALUES ($1,$2,$3,$4,$5,ST_SetSRID(ST_MakePoint($5,$4),4326)::geography,COALESCE($6,'UNKNOWN'),$7,$8,$9) ON CONFLICT (camera_id) DO UPDATE SET name=EXCLUDED.name,location_name=EXCLUDED.location_name,latitude=EXCLUDED.latitude,longitude=EXCLUDED.longitude,location=EXCLUDED.location,updated_at=CURRENT_TIMESTAMP`, [camera.camera_id, camera.name || null, camera.location_name || null, Number(camera.latitude), Number(camera.longitude), camera.status, camera.connectivity || null, camera.camera_type || "IP", camera.ownership || "Government"]);
+    }
+    await client.query("COMMIT");
+    res.status(201).json({ success: true, data: { imported: cameras.length } });
+  } catch (error) { await client.query("ROLLBACK"); res.status(400).json({ success: false, error: { code: "BULK_IMPORT_FAILED", message: error.message } }); }
+  finally { client.release(); }
+};
+
 module.exports = {
   getCameras,
   getCameraById,
@@ -359,4 +377,5 @@ module.exports = {
   getCameraHealth,
   recordCameraHealth,
   updateCamera,
+  bulkCreateCameras,
 };

@@ -10,11 +10,13 @@ const {
   getCameraHealth,
   recordCameraHealth,
   updateCamera,
+  bulkCreateCameras,
 } = require("../controllers/cameraController");
 
 const router = express.Router();
 
 router.get("/", getCameras);
+router.post("/bulk", bulkCreateCameras);
 
 router.post("/sentinel/upsert", upsertSentinelCamera);
 router.get("/:id/detections", getCameraDetections);
