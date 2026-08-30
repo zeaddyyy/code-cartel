@@ -21,6 +21,8 @@ class CameraCalibration:
 
 class SpeedEstimator:
     def __init__(self, calibration: CameraCalibration):
+        # A homography is mandatory because pixel displacement alone has no
+        # physical distance. This prevents invalid speed claims.
         matrix = np.asarray(calibration.homography, dtype=np.float64)
         if matrix.shape != (3, 3) or not np.isfinite(matrix).all():
             raise ValueError("homography must be a finite 3x3 matrix")
@@ -44,6 +46,8 @@ class SpeedEstimator:
         delta_t = float(pts_seconds) - previous[2]
         if delta_t <= 0:
             return None
+        # PTS-derived elapsed time is authoritative; declared camera FPS is
+        # deliberately not used for timing.
         speed_kph = hypot(dx, dy) / delta_t * 3.6
         limit = float(self.calibration.speed_limit_kph)
         return {

@@ -12,6 +12,8 @@ from ultralytics import YOLO
 
 class ANPRProcessor:
     def __init__(self):
+        # ANPR is opt-in: missing models or OCR tools must degrade to an
+        # explicit unavailable state rather than produce guessed plate text.
         self.enabled = os.getenv("ANPR_ENABLED", "false").lower() == "true"
         self.plate_model_path = os.getenv("PLATE_MODEL_PATH", "")
         self.model = None
@@ -24,6 +26,8 @@ class ANPRProcessor:
             print("ANPR enabled but PLATE_MODEL_PATH or tesseract is unavailable; no plate values will be generated")
 
     def process_vehicle(self, frame, detection):
+        # OCR is only attempted inside a detected vehicle crop; no plate is
+        # returned unless both a plate detector and OCR result are available.
         if not self.available:
             return None
         height, width = frame.shape[:2]

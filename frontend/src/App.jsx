@@ -59,7 +59,9 @@ function App() {
       setCameras(cameraData.cameras || []); setDetections(detectionData.detections || []); setError("");
     } catch (requestError) { setError(requestError.message); }
   };
-  useEffect(() => { load(); const timer = setInterval(load, 5000); const clockTimer = setInterval(() => setNow(Date.now()), 60000); return () => { clearInterval(timer); clearInterval(clockTimer); }; }, []);
+  // Defer the first request until after mount; the interval keeps the command
+  // center synchronized without blocking the initial render.
+  useEffect(() => { const initialLoad = setTimeout(load, 0); const timer = setInterval(load, 5000); const clockTimer = setInterval(() => setNow(Date.now()), 60000); return () => { clearTimeout(initialLoad); clearInterval(timer); clearInterval(clockTimer); }; }, []);
 
   const visibleCameras = useMemo(() => cameras.filter((camera) => {
     if (filters.status && (camera.health_status || camera.status) !== filters.status) return false;

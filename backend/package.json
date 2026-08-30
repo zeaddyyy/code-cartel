@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node src/server.js",
-    "dev": "nodemon src/server.js"
+    "dev": "nodemon src/server.js",
+    "check": "node --check src/server.js && node --check src/controllers/cameraController.js"
   },
   "keywords": [],
   "author": "",

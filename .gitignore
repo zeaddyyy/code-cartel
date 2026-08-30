@@ -17,3 +17,8 @@ frontend/dist/
 netrax_snapshots/
 .DS_Store
 *.tar.gz
+*.mp4
+*.ts
+*.jpg
+*.jpeg
+*.png
