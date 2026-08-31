@@ -1,0 +1,4 @@
+const pool = require("../config/database");
+async function ensureErrorTable() { await pool.query(`CREATE TABLE IF NOT EXISTS system_errors (id UUID PRIMARY KEY DEFAULT gen_random_uuid(), source VARCHAR(30) NOT NULL, severity VARCHAR(20) DEFAULT 'ERROR', message TEXT NOT NULL, route VARCHAR(255), status_code INTEGER, context JSONB, acknowledged BOOLEAN DEFAULT FALSE, created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP, acknowledged_at TIMESTAMPTZ)`); }
+async function recordError({ source = "BACKEND", message, route = null, statusCode = 500, context = {} }) { try { await pool.query("INSERT INTO system_errors(source,message,route,status_code,context) VALUES($1,$2,$3,$4,$5)", [source, String(message).slice(0, 2000), route, statusCode, JSON.stringify(context)]); } catch (error) { console.error("Error center unavailable:", error.message); } }
+module.exports = { ensureErrorTable, recordError };

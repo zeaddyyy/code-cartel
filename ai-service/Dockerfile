@@ -4,4 +4,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg tesserac
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
+RUN useradd --create-home --uid 10001 netrax-ai && chown -R netrax-ai:netrax-ai /app
+USER netrax-ai
 CMD ["python", "ai_live.py"]

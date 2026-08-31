@@ -10,6 +10,7 @@ function safeEqual(a, b) {
 }
 
 function login(req, res) {
+  if (req.body?.username !== (process.env.ADMIN_USERNAME || "admin")) return res.status(401).json({ success: false, message: "Invalid admin credentials" });
   const configuredPassword = process.env.ADMIN_PASSWORD;
   if (!configuredPassword) return res.status(503).json({ success: false, message: "Admin password is not configured on the server" });
   if (!safeEqual(req.body?.password, configuredPassword)) return res.status(401).json({ success: false, message: "Invalid admin password" });

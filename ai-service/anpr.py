@@ -45,7 +45,10 @@ class ANPRProcessor:
                 ok, encoded = cv2.imencode(".png", gray)
                 if not ok:
                     continue
-                ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "7", "-l", "eng"], input=encoded.tobytes(), capture_output=True, check=False)
+                try:
+                    ocr = subprocess.run(["tesseract", "stdin", "stdout", "--psm", "7", "-l", "eng"], input=encoded.tobytes(), capture_output=True, check=False, timeout=5)
+                except subprocess.TimeoutExpired:
+                    continue
                 normalized = re.sub(r"[^A-Z0-9]", "", ocr.stdout.decode(errors="ignore").upper())
                 if normalized:
                     return {"plate_number": normalized, "plate_confidence": round(float(box.conf[0]), 4)}

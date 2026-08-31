@@ -13,6 +13,8 @@ const cameraRoutes = require("./routes/cameraRoutes");
 const sentinelRoutes = require("./routes/sentinelRoutes");
 const detectionRoutes = require("./routes/detectionRoutes");
 const platformRoutes = require("./routes/platformRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const { ensureErrorTable, recordError } = require("./services/errorService");
 const app = express();
 const snapshotRoot = path.resolve(process.env.SNAPSHOT_DIR || "/tmp/netrax_snapshots");
 
@@ -20,9 +22,11 @@ const snapshotRoot = path.resolve(process.env.SNAPSHOT_DIR || "/tmp/netrax_snaps
 // endpoint receives the same headers, rate limit, logging, and JSON parsing.
 app.use(cors());
 app.use(helmet());
+app.use((req, res, next) => { res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"); next(); });
 app.use(rateLimit({ windowMs: 60 * 1000, limit: Number(process.env.RATE_LIMIT || 300), standardHeaders: true, legacyHeaders: false }));
 app.use(morgan("dev"));
 app.use(express.json());
+app.use((req, res, next) => { res.on("finish", () => { if (res.statusCode >= 500) recordError({ message: `${req.method} ${req.originalUrl} returned ${res.statusCode}`, route: req.originalUrl, statusCode: res.statusCode, context: { method: req.method } }); }); next(); });
 // Evidence files are served through a basename-only route to prevent path
 // traversal and to make browser snapshot loading deterministic.
 app.get("/api/snapshots/:filename", (req, res) => {
@@ -44,7 +48,9 @@ app.use("/api/snapshots", express.static(snapshotRoot, {
 app.use("/api/cameras", cameraRoutes);
 app.use("/api/sentinel", sentinelRoutes);
 app.use("/api/detections", detectionRoutes);
+app.use("/api/admin", adminRoutes);
 app.use("/api", platformRoutes);
+ensureErrorTable().catch((error) => console.error("Could not initialize error center:", error.message));
 // ==========================================
 // BASIC ROUTES
 // ==========================================

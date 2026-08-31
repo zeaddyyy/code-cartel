@@ -226,6 +226,9 @@ const createCamera = async (req, res) => {
       retention_days,
       status,
       installation_date,
+      rtsp_url,
+      webrtc_url,
+      hls_url,
     } = req.body;
 
     if (!camera_id || latitude === undefined || longitude === undefined) {
@@ -283,6 +286,10 @@ const createCamera = async (req, res) => {
         installation_date || null,
       ]
     );
+
+    if (rtsp_url || webrtc_url || hls_url) {
+      await pool.query(`INSERT INTO streams(camera_id, protocol, stream_url, stream_type, status, rtsp_url, webrtc_url, hls_url, source) VALUES($1,'RTSP',$2,'LIVE','CONFIGURED',$2,$3,$4,'MANUAL')`, [result.rows[0].id, rtsp_url || null, webrtc_url || null, hls_url || null]);
+    }
 
     res.status(201).json({
       success: true,

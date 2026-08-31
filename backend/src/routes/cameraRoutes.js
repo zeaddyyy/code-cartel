@@ -1,4 +1,5 @@
 const express = require("express");
+const { requireAdmin } = require("../middleware/adminAuth");
 
 const {
   getCameras,
@@ -16,7 +17,7 @@ const {
 const router = express.Router();
 
 router.get("/", getCameras);
-router.post("/bulk", bulkCreateCameras);
+router.post("/bulk", requireAdmin, bulkCreateCameras);
 
 router.post("/sentinel/upsert", upsertSentinelCamera);
 router.get("/:id/detections", getCameraDetections);
@@ -25,9 +26,9 @@ router.post("/:id/health", recordCameraHealth);
 
 router.get("/:id", getCameraById);
 
-router.post("/", createCamera);
+router.post("/", requireAdmin, createCamera);
 
-router.delete("/:id", deleteCamera);
-router.put("/:id", updateCamera);
+router.delete("/:id", requireAdmin, deleteCamera);
+router.put("/:id", requireAdmin, updateCamera);
 
 module.exports = router;

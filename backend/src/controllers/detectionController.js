@@ -78,6 +78,20 @@ const createDetection = async (req, res) => {
       ]
     );
 
+    // Correlate every recognised plate immediately with active watchlists.
+    // This keeps the detection path usable even when an external event bus is
+    // not deployed for the proof of concept.
+    if (plate_number) {
+      await pool.query(`
+        INSERT INTO alerts (camera_id, alert_type, priority, message, evidence_snapshot)
+        SELECT $1, 'WATCHLIST_MATCH', 'HIGH',
+          'Watchlist match: ' || w.name || ' (' || e.identifier || ')', $3
+        FROM watchlist_entries e JOIN watchlists w ON w.id = e.watchlist_id
+        WHERE w.status = 'ACTIVE' AND upper(regexp_replace(e.identifier, '[^A-Z0-9]', '', 'g')) = upper(regexp_replace($2, '[^A-Z0-9]', '', 'g'))
+          AND NOT EXISTS (SELECT 1 FROM alerts a WHERE a.camera_id=$1 AND a.alert_type='WATCHLIST_MATCH' AND a.message LIKE '%' || e.identifier || '%' AND a.created_at > NOW() - INTERVAL '30 seconds')
+      `, [camera_id, plate_number, snapshot_path ?? null]);
+    }
+
     res.status(201).json({
       success: true,
       detection: result.rows[0],

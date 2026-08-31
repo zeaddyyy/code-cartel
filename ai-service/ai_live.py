@@ -11,6 +11,7 @@ import subprocess
 import sys
 import threading
 import time
+from urllib.parse import urlparse
 from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
@@ -53,6 +54,18 @@ COOLDOWN_SECONDS = max(0.0, float(os.getenv("DETECTION_COOLDOWN_SECONDS", "2")))
 LOCAL_CAMERA_DB_ID = os.getenv("CAMERA_ID") or os.getenv("NETRAX_CAMERA_DB_ID", "8baacee1-e4e2-4e20-bda9-05c96cb25d30")
 SNAPSHOT_DIR = Path(os.getenv("SNAPSHOT_DIR", "/tmp/netrax_snapshots"))
 SNAPSHOT_URL_BASE = os.getenv("SNAPSHOT_URL_BASE", f"{BACKEND_URL}/api/snapshots").rstrip("/")
+AI_API_TOKEN = os.getenv("AI_API_TOKEN", "")
+MAX_FRAME_PIXELS = max(640 * 480, int(os.getenv("MAX_FRAME_PIXELS", "8294400")))
+
+
+def validate_source(source, is_rtsp):
+    parsed = urlparse(source)
+    if is_rtsp and parsed.scheme != "rtsp":
+        raise ValueError("only rtsp:// sources are permitted for Sentinel workers")
+    if is_rtsp and (not parsed.hostname or parsed.username or parsed.password):
+        raise ValueError("RTSP source must have a host and must not contain embedded credentials")
+    if not is_rtsp and parsed.scheme not in {"", "file"}:
+        raise ValueError("local workers accept only local file sources")
 
 
 def parse_args():
@@ -85,6 +98,7 @@ class FrameStream:
         self.stderr_tail = deque(maxlen=20)
 
     def start(self):
+        validate_source(self.source, self.is_rtsp)
         # showinfo emits frame PTS at info level. Decoder warnings remain
         # diagnostic only and are not treated as fatal by the worker.
         command = ["ffmpeg", "-hide_banner", "-loglevel", "info"]
@@ -160,7 +174,7 @@ class CameraWorker(threading.Thread):
 
     def save_snapshot(self, frame, detection):
         """Persist an evidence frame; no plate/owner values are inferred here."""
-        SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True)
+        SNAPSHOT_DIR.mkdir(parents=True, exist_ok=True, mode=0o750)
         safe_camera = re.sub(r"[^A-Za-z0-9_-]", "_", self.metadata.id)
         safe_track = re.sub(r"[^A-Za-z0-9_-]", "_", detection["track_id"])
         filename = f"{safe_camera}_{safe_track}_{int(time.time() * 1000)}.jpg"
@@ -170,6 +184,8 @@ class CameraWorker(threading.Thread):
         return f"{SNAPSHOT_URL_BASE}/{filename}"
 
     def infer(self, model, frame, width, height, anpr):
+        if width * height > MAX_FRAME_PIXELS:
+            raise ValueError(f"source resolution exceeds MAX_FRAME_PIXELS ({MAX_FRAME_PIXELS})")
         try:
             results = model.track(frame, persist=True, tracker="bytetrack.yaml", conf=CONFIDENCE_THRESHOLD, verbose=False)
         except Exception as error:
