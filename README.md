@@ -35,6 +35,20 @@ python3 tools/scale_test.py --cameras 80000
 (cd frontend && npm run build && npm run lint)
 (cd backend && npm run check)
 python3 -m py_compile ai-service/*.py tools/*.py
+
+## Cloud deployment
+
+Deploy the backend and frontend as separate services (Railway, or an equivalent
+platform) and attach a managed PostgreSQL/PostGIS-compatible database. The
+backend runs with `npm start`; set `DATABASE_URL`, `DATABASE_SSL=true` when
+required by the provider, `PORT`, `CORS_ORIGIN` to the exact frontend URL, and
+the remaining values documented in `backend/.env.example`. Apply the SQL files
+in the documented order before first use. Build the frontend with `npm run
+build` and set `VITE_API_URL` to the public backend URL at build time. Verify
+`GET /api/health`, `GET /api/system/status`, and `GET /api/cameras` after
+deployment. Sentinel media remains an external authenticated dependency; its
+credentials must never be placed in frontend source or public environment
+variables.
 ```
 
 Docker provides the architectural local services; native development remains supported for the Camera 13 fixture. Never commit `.env`, credentials, private camera URLs, snapshots, logs, or model artifacts.

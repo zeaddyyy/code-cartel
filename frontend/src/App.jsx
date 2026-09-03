@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Hls from "hls.js";
 import "./App.css";
 import GisPage from "./pages/GisPage.jsx";
 import LiveWallPage from "./pages/LiveWallPage.jsx";
@@ -37,10 +38,27 @@ function EvidenceImage({ snapshotPath, alt = "Evidence snapshot", className = "t
 
 function Preview({ camera }) {
   const [failed, setFailed] = useState(false);
-  const hlsUrl = camera.hls_url ? new URL(camera.hls_url, "https://live.corp8.cloud").toString() : "";
-  if (hlsUrl && !failed) return <div className="preview-live"><video src={hlsUrl} autoPlay muted playsInline controls onError={() => setFailed(true)} /><span>LIVE PREVIEW · HLS</span></div>;
-  if (camera.webrtc_url) return <div className="preview-empty">WebRTC preview available<br /><a href={camera.webrtc_url} target="_blank" rel="noreferrer">Open WHEP endpoint</a><small>Browser negotiation unavailable; AI ingestion continues independently.</small></div>;
-  return <div className="preview-empty">Preview unavailable<br /><small>HLS/WebRTC endpoint unavailable</small></div>;
+  const videoRef = useRef(null);
+  // Sentinel's browser-facing HLS host is cctv.corp8.cloud. Older registry
+  // rows contain the internal /live/stream/N path, so normalize those rows
+  // to the documented public camNN endpoint.
+  const sentinelNumber = camera.camera_id?.match(/^SENTINEL-(\d+)$/)?.[1];
+  const hlsUrl = sentinelNumber
+    ? `https://cctv.corp8.cloud/cam${String(sentinelNumber).padStart(2, "0")}/index.m3u8`
+    : camera.hls_url ? new URL(camera.hls_url, "https://cctv.corp8.cloud").toString() : "";
+  useEffect(() => {
+    if (!hlsUrl || failed || !videoRef.current) return undefined;
+    const video = videoRef.current;
+    if (video.canPlayType("application/vnd.apple.mpegurl")) { video.src = hlsUrl; return undefined; }
+    if (!Hls.isSupported()) { setFailed(true); return undefined; }
+    const player = new Hls({ enableWorker: true, lowLatencyMode: true, xhrSetup: (xhr) => { xhr.withCredentials = true; } });
+    player.loadSource(hlsUrl); player.attachMedia(video);
+    player.on(Hls.Events.ERROR, (_, data) => { if (data.fatal) setFailed(true); });
+    return () => player.destroy();
+  }, [hlsUrl, failed]);
+  if (hlsUrl && !failed) return <div className="preview-live"><video ref={videoRef} crossOrigin="use-credentials" autoPlay muted playsInline controls onError={() => setFailed(true)} /><span>LIVE PREVIEW · HLS</span></div>;
+  if (camera.webrtc_url) return <div className="preview-empty"><b>LIVE PREVIEW UNAVAILABLE</b><small>AUTHENTICATED SENTINEL SOURCE</small><a href="https://cctv.corp8.cloud/" target="_blank" rel="noreferrer">Open Sentinel Live Grid</a><small>Browser playback requires authorized Sentinel media access.</small></div>;
+  return <div className="preview-empty"><b>LIVE PREVIEW UNAVAILABLE</b><small>External stream endpoint unavailable</small></div>;
 }
 
 function App() {
@@ -88,7 +106,7 @@ function App() {
     return true;
   }), [detections, filters, now]);
   const classes = [...new Set(detections.map((detection) => detection.object_class))].sort();
-  const online = cameras.filter((camera) => ["CONNECTED", "ONLINE"].includes(camera.health_status || camera.status)).length;
+  const online = cameras.filter((camera) => ["CONNECTED", "ONLINE", "DISCOVERED", "CONFIGURED", "LIVE"].includes(camera.health_status || camera.status) || ["CONNECTED", "ONLINE", "DISCOVERED", "CONFIGURED", "LIVE"].includes(camera.stream_status)).length;
   const tracks = new Set(detections.filter((detection) => detection.track_id).map((detection) => `${detection.camera_id}:${detection.track_id}`)).size;
   const set = (key) => (event) => setFilters({ ...filters, [key]: event.target.value });
   const updateForm = (key) => (event) => setCameraForm({ ...cameraForm, [key]: event.target.value });
@@ -109,7 +127,7 @@ function App() {
   const anprReads = detections.filter((detection) => detection.plate_number);
   const speedViolations = detections.filter((detection) => detection.speed_violation === true || detection.speed_status === "REVIEW_REQUIRED");
   const activeAlerts = 0;
-  const geoCameras = cameras.filter((camera) => camera.latitude !== null && camera.latitude !== undefined && camera.longitude !== null && camera.longitude !== undefined && Number.isFinite(Number(camera.latitude)) && Number.isFinite(Number(camera.longitude)));
+  const geoCameras = cameras.filter((camera) => camera.latitude !== null && camera.latitude !== undefined && camera.longitude !== null && camera.longitude !== undefined && Number.isFinite(Number(camera.latitude)) && Number.isFinite(Number(camera.longitude)) && !(Number(camera.latitude) === 0 && Number(camera.longitude) === 0));
   const latitudes = geoCameras.map((camera) => Number(camera.latitude));
   const longitudes = geoCameras.map((camera) => Number(camera.longitude));
   const minLat = latitudes.length ? Math.min(...latitudes) : 0;

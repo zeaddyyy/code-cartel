@@ -15,17 +15,19 @@ const detectionRoutes = require("./routes/detectionRoutes");
 const platformRoutes = require("./routes/platformRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const { ensureErrorTable, recordError } = require("./services/errorService");
+const { getCameraCatalogue } = require("./services/sentinelService");
 const app = express();
 const snapshotRoot = path.resolve(process.env.SNAPSHOT_DIR || "/tmp/netrax_snapshots");
 
 // Security and request middleware are installed before routes so every API
 // endpoint receives the same headers, rate limit, logging, and JSON parsing.
-app.use(cors());
+const allowedOrigins = (process.env.CORS_ORIGIN || "http://localhost:5173").split(",").map((origin) => origin.trim()).filter(Boolean);
+app.use(cors({ origin: (origin, callback) => !origin || allowedOrigins.includes(origin) ? callback(null, true) : callback(new Error("Origin not allowed by CORS")), credentials: true }));
 app.use(helmet());
 app.use((req, res, next) => { res.setHeader("Cross-Origin-Resource-Policy", "cross-origin"); next(); });
 app.use(rateLimit({ windowMs: 60 * 1000, limit: Number(process.env.RATE_LIMIT || 300), standardHeaders: true, legacyHeaders: false }));
 app.use(morgan("dev"));
-app.use(express.json());
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "1mb" }));
 app.use((req, res, next) => { res.on("finish", () => { if (res.statusCode >= 500) recordError({ message: `${req.method} ${req.originalUrl} returned ${res.statusCode}`, route: req.originalUrl, statusCode: res.statusCode, context: { method: req.method } }); }); next(); });
 // Evidence files are served through a basename-only route to prevent path
 // traversal and to make browser snapshot loading deterministic.
@@ -75,6 +77,20 @@ app.get("/api/health", (req, res) => {
   });
 });
 
+let sentinelStatus = { state: "UNKNOWN", checked_at: null, message: "Not checked" };
+let sentinelCheckAt = 0;
+app.get("/api/system/status", async (req, res) => {
+  const now = Date.now();
+  if (now - sentinelCheckAt > 30000) {
+    sentinelCheckAt = now;
+    try { const catalogue = await Promise.race([getCameraCatalogue(), new Promise((_, reject) => setTimeout(() => reject(new Error("Sentinel health probe timed out")), 5000))]); sentinelStatus = { state: "OPERATIONAL", checked_at: new Date().toISOString(), camera_count: Array.isArray(catalogue.cameras) ? catalogue.cameras.length : null, message: "Sentinel catalogue reachable" }; }
+    catch (error) { sentinelStatus = { state: [401, 502, 523].includes(error.response?.status) ? "DEGRADED" : "UNAVAILABLE", checked_at: new Date().toISOString(), message: "Sentinel integration unavailable" }; }
+  }
+  let database = "OPERATIONAL";
+  try { await pool.query("SELECT 1"); } catch { database = "UNAVAILABLE"; }
+  res.json({ success: true, data: { netrax_core: "OPERATIONAL", database, sentinel_api: sentinelStatus, camera_registry: database === "OPERATIONAL" ? "AVAILABLE" : "UNAVAILABLE", live_media: "EXTERNAL_AUTHENTICATED_SOURCE", local_ai: process.env.AI_SERVICE_URL ? "CONFIGURED" : "LOCAL_OR_UNCONFIGURED" } });
+});
+
 app.get("/api/system/health", async (req, res) => {
   try {
     await pool.query("SELECT 1");
@@ -120,6 +136,11 @@ app.get("/api/db-test", async (req, res) => {
     });
   }
 });
+
+// Keep fallback handlers after every route so valid health/API paths are not
+// swallowed by the 404 handler.
+app.use((req, res) => res.status(404).json({ success: false, message: "Route not found" }));
+app.use((error, req, res, next) => { if (res.headersSent) return next(error); const status = error.message === "Origin not allowed by CORS" ? 403 : 500; res.status(status).json({ success: false, message: status === 403 ? "Origin not allowed" : "Request failed" }); });
 
 // ==========================================
 // START SERVER

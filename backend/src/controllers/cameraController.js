@@ -34,7 +34,8 @@ const getCameras = async (req, res) => {
         s.rtsp_url,
         s.codec AS stream_codec,
         s.width AS stream_width,
-        s.height AS stream_height
+        s.height AS stream_height,
+        s.status AS stream_status
       FROM cameras c
       LEFT JOIN departments d
         ON c.department_id = d.id
@@ -48,7 +49,7 @@ const getCameras = async (req, res) => {
         LIMIT 1
       ) h ON true
       LEFT JOIN LATERAL (
-        SELECT rtsp_url, webrtc_url, hls_url, codec, width, height
+        SELECT status, rtsp_url, webrtc_url, hls_url, codec, width, height
         FROM streams
         WHERE camera_id = c.id
         ORDER BY created_at DESC
